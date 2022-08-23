@@ -1,7 +1,7 @@
 # GATKCNVSnakemake
 
 
-This repo is my implementation of [GATK CNV Calling](https://gatk.broadinstitute.org/hc/en-us/articles/360035531152--How-to-Call-common-and-rare-germline-copy-number-variants) as a [Snakemake](https://snakemake.readthedocs.io/en/stable/) pipeline. My hope is this repo will help make cnv calling quick and easy for anyone. The skeleton of this pipeline originates from [Dmytro Kryvokhyzha's pipeline](https://evodify.com/gatk-cnv-snakemake/)
+This repo is my implementation of [GATK CNV Calling](https://gatk.broadinstitute.org/hc/en-us/articles/360035531152--How-to-Call-common-and-rare-germline-copy-number-variants) as a [Snakemake](https://snakemake.readthedocs.io/en/stable/) pipeline. My hope is this repo will help make cnv calling quick and easy for anyone. The skeleton of this pipeline originates from [a blog post by Dmytro Kryvokhyzha](https://evodify.com/gatk-cnv-snakemake/).
 
 ## Install
 
