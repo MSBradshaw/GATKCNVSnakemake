@@ -1,11 +1,11 @@
 # GATKCNVSnakemake
 
 
-This repo is my implementation of [CNVkit](https://cnvkit.readthedocs.io/en/stable/) as a [Snakemake](https://snakemake.readthedocs.io/en/stable/) pipeline. My hope is this repo will help make cnv calling quick and easy for anyone.
+This repo is my implementation of [GATK CNV Calling](https://gatk.broadinstitute.org/hc/en-us/articles/360035531152--How-to-Call-common-and-rare-germline-copy-number-variants) as a [Snakemake](https://snakemake.readthedocs.io/en/stable/) pipeline. My hope is this repo will help make cnv calling quick and easy for anyone. The skeleton of this pipeline originates from [Dmytro Kryvokhyzha's pipeline](https://evodify.com/gatk-cnv-snakemake/)
 
 ## Install
 
-If you haven't already, install [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html).
+If you haven't already, install [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html). This tool uses an older version of snakemake 4.3.1, where the `dynamic()` function still existed for easier scattering and parallelization. In the future I hope to update this to use `checkpoint`s and the most recent version of snakemake instead, but that is a huge headache and this works.
 
 To install all necessary tools simply run
 
