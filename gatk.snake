@@ -1,0 +1,276 @@
+#ref_samp_path = config['ref_samples']
+non_ref_path = config['samples']
+
+#ref_samps = [l.strip().split('/')[-1].replace('.bam','') for l in open(ref_samp_path,'r')]
+non_ref_samps = [l.strip().split('/')[-1].replace('.bam','') for l in open(non_ref_path,'r')]
+
+print('non_ref_samps')
+print(non_ref_samps)
+print('---')
+
+CHRN = list(range(1, 22))
+CHRN.append('X')
+CHRN.append('Y')
+CHR = CHRN
+
+REF = config['ref_genome']
+DICT = config['ref_dict'] 
+PLOIDY_PRIOR = config['ploidy_priors']
+
+"""
+
+NOTE: file paths need to be absolute not relative, --load is a make believe resource created to mimic the total number of clusters allowed by the pipeline as a whole and as each individual job. This is preferred over use --jobs X to better balance the difference in needs between small rules and HUGE resource intesive rules.
+
+snakemake --cluster "sbatch -J {cluster.job-name} -t {cluster.time}  -N {cluster.nodes}  -n {cluster.ntasks}  -p {cluster.partition}  --mem={cluster.mem} " --cores 640 -s gatk.snake --resources load=640 --cluster-config conf/cluster_config.yaml --rerun-incomplete  --config ref_samples="ref_absolute_paths.txt" samples="non_ref_absolute_paths.txt" ref_genome="/scratch/Shares/layer/ref/hg37/human_g1k_v37.fasta" ref_dict="/scratch/Shares/layer/ref/hg37/human_g1k_v37.dict" 
+"""
+
+rule all:
+    input:
+        expand('work/chr{j}_{sample}_intervals_cohort.vcf.gz', j=CHR, sample=non_ref_samps),
+        expand('work/chr{j}_{sample}_segments_cohort.vcf.gz', j=CHR, sample=non_ref_samps),
+        expand('work/chr{j}_{sample}.txt', j=CHR, sample=non_ref_samps),
+        expand('work/interval_chr{j}.interval_list', j=CHR),
+        expand('NonRefSamps/{sample}.bam',sample=non_ref_samps),
+        expand('work/gcfiltered_chr{j}.interval_list', j=CHR),
+        expand('work/ploidy-calls_chr{j}', j=CHR),
+	'work/k100.umap.bed.gz',
+        'work/k100.umap.bed.gz.tbi'
+
+rule create_symlink_script:
+	output:
+		'work/symlink_files.sh'
+	run:
+		with open('work/symlink_files.sh','w') as outfile:
+			for line in open(config['samples'],'r'):
+				fname = line.split('/')[-1]
+				outfile.write('ln -f -s {} NonRefSamps/{}\n'.format(line.strip(),fname))
+				outfile.write('ln -f -s {} NonRefSamps/{}\n'.format(line.strip().replace('.bam','.bai'),fname.replace('.bam','.bai')))
+
+rule symlink_files:
+	input:
+		'work/symlink_files.sh'
+	output:
+		expand('NonRefSamps/{sample}.bam',sample=non_ref_samps)
+	shell:
+		"""
+		mkdir -p NonRefSamps
+		bash {input}
+		"""
+
+
+rule get_and_index_ump:
+	output:
+		bed='work/k100.umap.bed.gz',
+		tbi='work/k100.umap.bed.gz.tbi'
+	resources:
+		load=2
+	shell:
+		"""
+		mkdir -p work
+		wget https://bismap.hoffmanlab.org/raw/hg19/k100.umap.bed.gz --no-check-certificate
+		gunzip k100.umap.bed.gz
+		sed -i -e 's/chr//g' k100.umap.bed
+		echo -n "#" > tmp.k100.umap.bed
+		cat k100.umap.bed >> tmp.k100.umap.bed
+		mv tmp.k100.umap.bed k100.umap.bed
+		bgzip k100.umap.bed
+		tabix k100.umap.bed.gz
+		mv k100.umap.bed.gz {output.bed}
+		mv k100.umap.bed.gz.tbi {output.tbi}
+		"""
+
+
+rule make_intervals:
+    input:
+        REF
+    params:
+        '{j}'
+    output:
+        'work/interval_chr{j}.interval_list'
+    resources:
+        load=2
+    shell:
+        '''
+	mkdir -p  work
+        gatk --java-options "-Xmx8G" PreprocessIntervals \
+        -R {input} \
+        --padding 0 \
+        -L {params} \
+        -imr OVERLAPPING_ONLY \
+        -O {output}
+        '''
+
+rule count_reads:
+    input:
+        ref = REF,
+        bam = 'NonRefSamps/{sample}.bam',
+        interval = 'work/interval_chr{j}.interval_list'
+    output:
+        'work/{sample}_chr{j}.hdf5'
+    resources:
+        load=2
+    shell:
+        '''
+        gatk --java-options "-Xmx8G" CollectReadCounts \
+        -R {input.ref} \
+        -imr OVERLAPPING_ONLY \
+        -L {input.interval} \
+        -I {input.bam} \
+        -O {output}
+        '''
+
+rule annotate:
+    input:
+        ref = REF,
+        interval = 'work/interval_chr{j}.interval_list',
+        mappability = 'work/k100.umap.bed.gz',
+        # segduplication = SEGDUP
+    output:
+        'work/annotated_intervals_chr{j}.tsv'
+    resources:
+        load=2
+    shell:
+        '''
+        gatk --java-options "-Xmx8G" AnnotateIntervals \
+        -R {input.ref} \
+        -L {input.interval} \
+        --mappability-track {input.mappability} \
+        --interval-merging-rule OVERLAPPING_ONLY \
+        -O {output}
+        '''
+
+rule filter_intervals:
+    input:
+        interval = 'work/interval_chr{j}.interval_list',
+        annotated = 'work/annotated_intervals_chr{j}.tsv',
+        samples = expand('work/{sample}_{chromosome}.hdf5', sample=non_ref_samps, chromosome='chr{j}'),
+    output:
+        'work/gcfiltered_chr{j}.interval_list'
+    params:
+        files = lambda wildcards, input: ' -I '.join(input.samples)
+    resources:
+        load=2
+    shell:
+        '''
+        gatk --java-options "-Xmx8G" FilterIntervals \
+        -L {input.interval} \
+        --annotated-intervals {input.annotated} \
+        -I {params.files} \
+        --interval-merging-rule OVERLAPPING_ONLY \
+        -O {output}
+        '''
+
+rule determine_ploidy:
+    input:
+        interval = 'work/gcfiltered_chr{j}.interval_list',
+        samples = expand('work/{sample}_{chromosome}.hdf5', sample=non_ref_samps, chromosome='chr{j}'),
+        prior = PLOIDY_PRIOR,
+    params:
+        prefix = 'human',
+        files = lambda wildcards, input: ' -I '.join(input.samples),
+	gc_threads = 2
+    output:
+        'work/ploidy-calls_chr{j}'
+    threads: 64
+    resources:
+        mem_mb=500000,
+        load=64
+    shell:
+        '''
+        gatk --java-options "-Xmx8G" DetermineGermlineContigPloidy \
+        -L {input.interval} \
+        -I {params.files} \
+        --contig-ploidy-priors {input.prior} \
+        --output-prefix  {params.prefix} \
+        --interval-merging-rule OVERLAPPING_ONLY \
+        -O {output}
+        '''
+
+rule scattering:
+    input:
+        interval = 'work/gcfiltered_chr{j}.interval_list'
+    output:
+        dynamic('work/scatter_chr{j}/{fragment}/scattered.interval_list')
+    params:
+        'work/scatter_chr{j}'
+    resources:
+        load=1
+    shell:
+        '''
+        mkdir -p {params} # needed because Snakemake fails creating this directory automatically # Michael: this is outdated. The output is a file not a dir now
+        gatk --java-options "-Xmx8G" IntervalListTools \
+        --INPUT {input.interval} \
+        --SUBDIVISION_MODE INTERVAL_COUNT \
+        --SCATTER_COUNT 10 \
+        --OUTPUT {params}
+        '''
+# this step really need to be done using multiple full nodes, one node for each shard. I am still working out how to do this with snakemake automatically.
+rule cnvcall:
+    input:
+        interval = 'work/scatter_chr{j}/{fragment}/scattered.interval_list',
+        sample = expand("work/{sample}_{chromosome}.hdf5", sample=non_ref_samps, chromosome='chr{j}'),
+        annotated = 'work/annotated_intervals_chr{j}.tsv',
+        ploidy = 'work/ploidy-calls_chr{j}'
+    output:
+        modelf = "work/cohort-calls_chr{j}/frag_{fragment}-model",
+        callsf = "work/cohort-calls_chr{j}/frag_{fragment}-calls"
+    params:
+        outdir = 'work/cohort-calls_chr{j}',
+        outpref = 'frag_{fragment}',
+        files = lambda wildcards, input: " -I ".join(input.sample),
+        gc_threads = 2
+    threads:64
+    resources:
+        load=64
+    shell:
+        '''
+        mkdir -p {params.outdir}
+        gatk --java-options "-Xmx8G" GermlineCNVCaller  \
+        --run-mode COHORT \
+        -L {input.interval} \
+        -I {params.files} \
+        --contig-ploidy-calls {input.ploidy}/human-calls \
+        --annotated-intervals {input.annotated} \
+        --output-prefix {params.outpref} \
+        --interval-merging-rule OVERLAPPING_ONLY \
+        -O {params.outdir}
+        '''
+
+def sampleindex(sample):
+    index = non_ref_samps.index(sample)
+    return index
+
+rule process_cnvcalls:
+    input:
+        model = dynamic("work/cohort-calls_chr{j}/frag_{fragment}-model"),
+        calls = dynamic("work/cohort-calls_chr{j}/frag_{fragment}-calls"),
+        dict  = DICT,
+        ploidy = 'work/ploidy-calls_chr{j}'
+    output:
+        intervals = 'work/chr{j}_{sample}_intervals_cohort.vcf.gz',
+        segments = 'work/chr{j}_{sample}_segments_cohort.vcf.gz',
+        denoised = 'work/chr{j}_{sample}.txt'
+    params:
+        index = lambda wildcards: sampleindex(wildcards.sample),
+        modelfiles = lambda wildcards, input: " --model-shard-path ".join(input.model),
+        callsfiles = lambda wildcards, input: " --calls-shard-path ".join(input.calls),
+	gc_threads = 2
+    threads: 64
+    resources:
+        load=64
+    shell:
+        '''
+        gatk --java-options "-Xmx8G" PostprocessGermlineCNVCalls \
+        --model-shard-path {params.modelfiles} \
+        --calls-shard-path {params.callsfiles} \
+        --sequence-dictionary {input.dict} \
+        --allosomal-contig X \
+	--allosomal-contig Y \
+        --contig-ploidy-calls {input.ploidy}/human-calls \
+        --sample-index {params.index} \
+        --output-genotyped-intervals  {output.intervals} \
+        --output-genotyped-segments  {output.segments} \
+	--output-denoised-copy-ratios {output.denoised}
+
+        '''
+
