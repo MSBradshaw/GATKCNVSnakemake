@@ -1,11 +1,11 @@
 # GATKCNVSnakemake
 
 
-This repo is my implementation of [GATK CNV Calling](https://gatk.broadinstitute.org/hc/en-us/articles/360035531152--How-to-Call-common-and-rare-germline-copy-number-variants) as a [Snakemake](https://snakemake.readthedocs.io/en/stable/) pipeline on a cluster using the (Slurm Workload Manager)[https://slurm.schedmd.com/documentation.html]. This can be changed to use alternate workflow managers by changing the start command and settings saved in `conf/cluster_config.yaml`, refer to the (Snakemake documentation for more detail)[https://snakemake.readthedocs.io/en/stable/executing/cluster.html]. The skeleton of this pipeline originates from [a blog post by Dmytro Kryvokhyzha](https://evodify.com/gatk-cnv-snakemake/).  My hope is this repo will help make cnv calling quick and easy for anyone.
+This repo is my implementation of [GATK CNV Calling](https://gatk.broadinstitute.org/hc/en-us/articles/360035531152--How-to-Call-common-and-rare-germline-copy-number-variants) as a [Snakemake](https://snakemake.readthedocs.io/en/stable/) pipeline on a cluster using the [Slurm Workload Manager](https://slurm.schedmd.com/documentation.html). Alternate workflow managers can be used by changing the start command and settings saved in `conf/cluster_config.yaml`, refer to the (Snakemake documentation for more detail)[https://snakemake.readthedocs.io/en/stable/executing/cluster.html]. The skeleton of this pipeline originates from [a blog post by Dmytro Kryvokhyzha](https://evodify.com/gatk-cnv-snakemake/). My hope is this repo will help make CNV calling quick and easy for anyone.
 
 ## Install
 
-If you haven't already, install [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html). This tool uses an older version of snakemake 4.3.1, where the `dynamic()` function still existed for easier scattering and parallelization. In the future I hope to update this to use `checkpoint`s and the most recent version of snakemake instead, but that is a huge headache and this works.
+If you haven't already, install [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html). This tool uses an older version of Snakemake (4.3.1), where the `dynamic()` function still existed for easier scattering and parallelization. In the future I hope to update this to use `checkpoint`s and the most recent version of snakemake instead, but that is a huge headache and this works just fine for now.
 
 To install all necessary tools simply run
 
@@ -61,6 +61,8 @@ This results in small rules running up to 320 jobs or the large rules running up
 
 All file paths need to be absolute, not relative, as the pipeline will be symlinking the files.
 
-Each sample's `.bam` must have a unique name and an accompanying `.bai`. 
+Each sample's `.bam` must have a unique name and an accompanying `.bai`.
+
+The number of cores used for each jobs have been hard coded into  `gatk.snake`. It assumes 1 whole compute node has 64 cores and requests a whole node for the each job spawned for the rules `cnvcall`, `process_cnvcalls` and `determine_ploidy`. The GATK processes automatically expand to use all available cores and changing this behavoir has surprisingly proven dificult.
 
 The the final output calls will be saved in `work/chr{j}_{sample}_intervals_cohort.vcf.gz` and `work/chr{j}_{sample}_segments_cohort.vcf.gz`.
