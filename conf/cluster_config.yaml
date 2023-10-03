@@ -1,0 +1,23 @@
+__default__:
+  job-name: "{rule}"
+  partition: short
+  time: 180 # minutes
+  nodes: 1
+  ntasks: 2
+  mem: 16gb
+  output: "log/{rule}-%j.out"
+  error: "log/{rule}-%j.err"
+
+determine_ploidy:
+  mem: 500gb
+  ntasks: 64
+  time: 600 # minutes
+  output: "log/{rule}-{wildcards.j}-{wildcards.fragment}-%j.out"
+  error: "log/{rule}-{wildcards.j}-{wildcards.fragment}-%j.err"
+
+cnvcall:
+  mem: 500gb
+  ntasks: 64
+  time: 600 # minutes
+  output: "log/{rule}-{wildcards.j}-{wildcards.fragment}-%j.out"
+  error: "log/{rule}-{wildcards.j}-{wildcards.fragment}-%j.err"
