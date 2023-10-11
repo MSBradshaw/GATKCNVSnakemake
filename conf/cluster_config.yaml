@@ -12,8 +12,8 @@ determine_ploidy:
   mem: 500gb
   ntasks: 64
   time: 600 # minutes
-  output: "log/{rule}-{wildcards.j}-{wildcards.fragment}-%j.out"
-  error: "log/{rule}-{wildcards.j}-{wildcards.fragment}-%j.err"
+  output: "log/{rule}-{wildcards.j}-%j.out"
+  error: "log/{rule}-{wildcards.j}-%j.err"
 
 cnvcall:
   mem: 500gb

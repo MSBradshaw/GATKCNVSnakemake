@@ -168,7 +168,7 @@ rule determine_ploidy:
     params:
         prefix = 'human',
         files = lambda wildcards, input: ' -I '.join(input.samples),
-	gc_threads = 2
+	        gc_threads = 2
     output:
         'work/ploidy-calls_chr{j}'
     threads: 64
@@ -185,6 +185,7 @@ rule determine_ploidy:
         --interval-merging-rule OVERLAPPING_ONLY \
         -O {output}
         '''
+
 rule scattering:
     input:
         interval = 'work/gcfiltered_chr{j}.interval_list'
